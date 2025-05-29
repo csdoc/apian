@@ -138,10 +138,15 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
         return await axios({
           method: 'get',
           url: targetUrl,
-          responseType: 'stream',
+          responseType: 'arraybuffer',
           timeout: config.timeout,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
           headers: {
-            'User-Agent': config.userAgent
+            'User-Agent': config.userAgent,
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
           }
         });
       } catch (error) {
@@ -166,13 +171,25 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
     sensitiveHeaders.forEach(header => delete headers[header]);
     res.set(headers);
 
-    // 管道传输响应流
-    response.data.pipe(res);
+    // 将 arraybuffer 转换为字符串并发送
+    const contentType = response.headers['content-type'] || '';
+    if (contentType.includes('application/json')) {
+      const text = Buffer.from(response.data).toString('utf8');
+      res.send(text);
+    } else {
+      res.send(response.data);
+    }
   } catch (error) {
     console.error('代理请求错误:', error.message);
     if (error.response) {
       res.status(error.response.status || 500);
-      error.response.data.pipe(res);
+      const contentType = error.response.headers['content-type'] || '';
+      if (contentType.includes('application/json')) {
+        const text = Buffer.from(error.response.data).toString('utf8');
+        res.send(text);
+      } else {
+        res.send(error.response.data);
+      }
     } else {
       res.status(500).send(`请求失败: ${error.message}`);
     }
